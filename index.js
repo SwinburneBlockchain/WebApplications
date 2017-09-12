@@ -88,7 +88,6 @@ app.post('/getqr', function (req, res) {
             'acc': accAddr,
             'pubKey': pubKey,
             'privKey': privKey
-            //'QRSvg': qrSvgString
           }
           db.collection("qrcodes").insert(insert, function(err, doc) {
             if (err) {
