@@ -1,7 +1,7 @@
 var express = require('express');
 var MongoClient = require('mongodb').MongoClient
 var request = require("request");
-
+var ObjectId = require('mongodb').ObjectID;
 var router = express.Router();
 
 // URL for your Nxt node
@@ -44,28 +44,32 @@ function updateProducts() {
         function callback(error, response, body) {
           if (!error && response.statusCode == 200) {
             var intCount = 1;
+
             body.transactions.forEach(function(value) {
-              console.log('CachingServer - ' + value.attachment.message);
+              //console.log(collectionName + ": " + JSON.stringify(value));
               var arr = value.attachment.message.split(" - ");
 
-              request.post({url:mainServerUrl + 'producerInfo', form: {producerAddr: value.senderRS}},
+              request.post({url:mainServerUrl + 'producerInfo', form: {producerAddr: arr[1]}},
                 function (error, response, body) {
-
                   var jsonObj = JSON.parse(body);
                   if (!error && response.statusCode == 200) {
                     insert = {
                       '_id': intCount,
                       'action': arr[0],
                       'actionAddress': value.senderRS,
-                      'timestamp': value.timestamp,
+                      'timestamp': ((value.timestamp * 1000) + (1385294583 * 1000)),
                       'nextProducer': arr[1],
                       'producerName': jsonObj.name,
                       'producerLocation': jsonObj.location
                     }
+                    db.collection(collectionName, function(err, collection) {
+                      collection.deleteOne({_id: new ObjectId(intCount)});
+                    });
+                    intCount++;
                     db.collection(collectionName).insert(insert, function(err, doc) {
                       //if (err) throw err;
                     });
-                    intCount++;
+
                   } else {
                     console.log(error);
                   }
@@ -82,10 +86,10 @@ function updateProducts() {
 
 //var minutes = 1, the_interval = minutes * 60 * 1000;
 setInterval(function() {
-  console.log("CachingServer - Updating Products");
+  console.log("CachingServer - Scheduled Update...");
   updateProducts();
   // do your stuff here
-}, 7000);
+}, 10000);
 
 router.post('/cacheQR', function(req, res) {
   console.log('TIMESTAMP: ' + (new Date).getTime());
@@ -130,10 +134,33 @@ router.post('/productInfo', function(req, res) {
   console.log("CachingServer - Cosumer Requesting Info");
   var productAddr = req.body.accAddr;
 
-  db.collection(productAddr).find({}).toArray(function(err, result) {
+  db.collection('PRODUCT - ' + productAddr).find({}).toArray(function(err, result) {
     //pipe items
-    console.log(result);
-    res.send(result);
+    var completeString = "";
+    result.forEach(function(value) {
+      completeString += JSON.stringify(value);
+      completeString += "|";
+    });
+
+    console.log(completeString);
+    res.send(completeString);
+  });
+});
+
+router.get('/productInfo/:accAddr', function(req, res) {
+  console.log("CachingServer - Cosumer Requesting Info");
+  var productAddr = req.params.accAddr;
+  //console.log(req.params.accAddr);
+  db.collection('PRODUCT - ' + productAddr).find({}).toArray(function(err, result) {
+    //pipe items
+    var completeString = "";
+    result.forEach(function(value) {
+      completeString += JSON.stringify(value);
+      completeString += "|";
+    });
+
+    console.log(completeString);
+    res.send(completeString);
   });
 });
 

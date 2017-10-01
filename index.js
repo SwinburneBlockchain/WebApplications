@@ -6,7 +6,7 @@ var MongoClient = require('mongodb').MongoClient
 var request = require("request");
 var randomstring = require("randomstring");
 var qr = require('qr-image');
-var ObjectId = require('mongodb').ObjectID;
+//var ObjectId = require('mongodb').ObjectID;
 var mongoose = require('mongoose');
 
 // URL of MongoDB
@@ -229,6 +229,7 @@ app.post('/findqr', function (req, res) {
 });
 
 app.post('/moveqr', function (req, res) {
+  console.log('MainServer - Product Being Moved');
   var producerPubKey = req.body.pubKey;
   var producerPrivKey = req.body.privKey;
   var productAddr = req.body.prodAddr;
