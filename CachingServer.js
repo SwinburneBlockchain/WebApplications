@@ -7,6 +7,8 @@ var router = express.Router();
 // URL for your Nxt node
 var nxtUrl = 'http://ec2-52-64-224-239.ap-southeast-2.compute.amazonaws.com:6876/nxt?';
 
+var mainServerUrl = 'http://ec2-54-153-202-123.ap-southeast-2.compute.amazonaws.com:3000/';
+
 var url = 'mongodb://localhost:27017';
 var db;
 // Connect to MongoDB
@@ -28,33 +30,47 @@ function updateProducts() {
   db.listCollections().toArray(function(err, collInfos) {
     collInfos.forEach(function(value) {
       var collectionName = value.name;
-      if(collectionName.length == 24) {
+      var nameArr = collectionName.split(" - ");
+      if(nameArr[0] == 'PRODUCT') {
         const options = {
           method: 'GET',
           uri: nxtUrl,
           json: true,
           qs: {
             requestType: "getBlockchainTransactions",
-            account: collectionName
+            account: nameArr[1]
           }
         };
         function callback(error, response, body) {
           if (!error && response.statusCode == 200) {
             var intCount = 1;
             body.transactions.forEach(function(value) {
-              //console.log('CachingServer - ' + value.attachment.message);
-              var arr = value.attachment.message.split
+              console.log('CachingServer - ' + value.attachment.message);
+              var arr = value.attachment.message.split(" - ");
 
-              insert = {
-                '_id': intCount,
-                'action': arr[0],
-                'address': arr[1]
-              }
+              request.post({url:mainServerUrl + 'producerInfo', form: {producerAddr: value.senderRS}},
+                function (error, response, body) {
 
-              db.collection(collectionName).insert(insert, function(err, doc) {
-                if (err) throw err;
-              });
-              intCount++;
+                  var jsonObj = JSON.parse(body);
+                  if (!error && response.statusCode == 200) {
+                    insert = {
+                      '_id': intCount,
+                      'action': arr[0],
+                      'actionAddress': value.senderRS,
+                      'timestamp': value.timestamp,
+                      'nextProducer': arr[1],
+                      'producerName': jsonObj.name,
+                      'producerLocation': jsonObj.location
+                    }
+                    db.collection(collectionName).insert(insert, function(err, doc) {
+                      //if (err) throw err;
+                    });
+                    intCount++;
+                  } else {
+                    console.log(error);
+                  }
+                }
+              );
             });
           }
         }
@@ -66,10 +82,10 @@ function updateProducts() {
 
 //var minutes = 1, the_interval = minutes * 60 * 1000;
 setInterval(function() {
-  console.log("CachingServer - I am doing my 1 minute check");
-  //updateProducts();
+  console.log("CachingServer - Updating Products");
+  updateProducts();
   // do your stuff here
-}, 60000);
+}, 7000);
 
 router.post('/cacheQR', function(req, res) {
   console.log('TIMESTAMP: ' + (new Date).getTime());
@@ -103,12 +119,9 @@ router.post('/cacheQR', function(req, res) {
   console.log(producerName);
   console.log(producerLocation);
   console.log('------');
-  /*
-  db.createCollection(qrAddress, function(error, otherThing) {
-    if (error) throw error;
-  });
-  */
-  db.collection(qrAddress).insert(insert, function(err, doc) {
+
+  console.log('ADDING PRODUCT!!!');
+  db.collection('PRODUCT - ' + qrAddress).insert(insert, function(err, doc) {
     if (err) throw err;
   });
 });
@@ -118,11 +131,10 @@ router.post('/productInfo', function(req, res) {
   var productAddr = req.body.accAddr;
 
   db.collection(productAddr).find({}).toArray(function(err, result) {
+    //pipe items
     console.log(result);
     res.send(result);
   });
-
-  //res.send('sample data');
 });
 
 // Define the about route

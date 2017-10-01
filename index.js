@@ -37,9 +37,21 @@ MongoClient.connect(url, function (err, database) {
         console.log("Collection created!");
     });
   */
+    // Nxt information on the ProductChain server
+    db.createCollection("PRODUCER - NXT-HP3G-T95S-6W2D-AEPHE", function(error, otherThing) {
+      if (error) throw error;
+    });
+    insert = {
+      '_id': '0',
+      'name': 'ProductChain Server',
+      'location': 'Swinburne Hawthorn, Victoria'
+    }
+    db.collection("PRODUCER - NXT-HP3G-T95S-6W2D-AEPHE").insert(insert, function(err, doc) {
+      //if (err) throw err;
+    });
 
     // Create a collection for each of the valid 'Producers'
-    db.createCollection("e3463b3c51e85b064e3ac02eaf9ad9f5287f10ba27c92e4870d52db75644ca44", function(error, otherThing) {
+    db.createCollection("PRODUCER - NXT-QBU9-KSX6-6TH4-H47LR", function(error, otherThing) {
       if (error) throw error;
     });
     insert = {
@@ -47,11 +59,11 @@ MongoClient.connect(url, function (err, database) {
       'name': 'John Egg Farm',
       'location': 'Croydon Hills, Victoria'
     }
-    db.collection("e3463b3c51e85b064e3ac02eaf9ad9f5287f10ba27c92e4870d52db75644ca44").insert(insert, function(err, doc) {
+    db.collection("PRODUCER - NXT-QBU9-KSX6-6TH4-H47LR").insert(insert, function(err, doc) {
       //if (err) throw err;
     });
 
-    db.createCollection("30f88475cb442e63cb3ab854d4c03d7c3a4a55634f85c690212ca443ead9eb6c", function(error, otherThing) {
+    db.createCollection("PRODUCER - NXT-MNDK-R2CB-TX4W-AKH4U", function(error, otherThing) {
       if (error) throw error;
     });
     insert = {
@@ -59,7 +71,7 @@ MongoClient.connect(url, function (err, database) {
       'name': 'Aidan Grocery Store',
       'location': 'Gold Coast Shops, Queensland'
     }
-    db.collection("30f88475cb442e63cb3ab854d4c03d7c3a4a55634f85c690212ca443ead9eb6c").insert(insert, function(err, doc) {
+    db.collection("PRODUCER - NXT-MNDK-R2CB-TX4W-AKH4U").insert(insert, function(err, doc) {
       //if (err) throw err;
     });
 
@@ -185,7 +197,7 @@ function sendToBlockchain(productAddr, prodDestination, producerPubKey, producer
 function cacheQRInfo(accAddr, pubKey, privKey, producerAddr, producerPubKey, productName, productId, batchId) {
   console.log('PRODUCER ADDR: ' + producerPubKey);
 
-  db.collection(producerPubKey).find({}).toArray(function(err, result) {
+  db.collection('PRODUCER - ' + producerAddr).find({}).toArray(function(err, result) {
      if (err) throw err;
      result.forEach(function(value) {
        request.post({url:cacheServerUrl + 'cacheQR', form: {qrAddress: accAddr, qrPubKey: pubKey,
@@ -240,7 +252,7 @@ app.post('/getqr', function (req, res) {
 
   db.listCollections().toArray(function(err, collInfos) {
     collInfos.forEach(function(value) {
-      if(String(value.name) == (producerPubKey)) {
+      if(String(value.name) == ('PRODUCER - ' + producerAddr)) {
         getQRDetailsFromNxt(function(accAddr, pubKey, privKey) {
           console.log("MainServer - ------------------");
           console.log("MainServer - Address: " + accAddr);
@@ -274,7 +286,7 @@ app.post('/getqrtest', function (req, res) {
 
   db.listCollections().toArray(function(err, collInfos) {
     collInfos.forEach(function(value) {
-      if(String(value.name) == (producerPubKey)) {
+      if(String(value.name) == ('PRODUCER - ' + producerAddr)) {
         console.log("Found table name with same public key");
         getQRDetailsFromNxt(function(accAddr, pubKey, privKey) {
           qrString = "{\"accAddr\":" + "\"" + accAddr + "\"" + ",\"pubKey\":" + "\"" + pubKey + "\"" + ",\"privKey\":" + "\"" + privKey + "\"" + "}";
@@ -303,6 +315,16 @@ app.post('/getqrtest', function (req, res) {
   });
 });
 
+app.post('/producerInfo', function(req, res) {
+
+  var producerAddr = req.body.producerAddr;
+  db.collection('PRODUCER - ' + producerAddr).find({}).toArray(function(err, result) {
+    result.forEach(function(value) {
+      res.send(value);
+    });
+  });
+});
+
 //Remove the QRCodes Collection. Only temporary
 app.get('/removeAll', (req, res) => {
   db.dropDatabase();
@@ -310,7 +332,7 @@ app.get('/removeAll', (req, res) => {
 
 app.get('/getqr', (req, res) => {
 	console.log('Getting Query!');
-  db.collection("e3463b3c51e85b064e3ac02eaf9ad9f5287f10ba27c92e4870d52db75644ca44").find({}).toArray(function(err, result) {
+  db.collection("NXT-QBU9-KSX6-6TH4-H47LR").find({}).toArray(function(err, result) {
      if (err) throw err;
 	   res.send(result)
      console.log(result);
