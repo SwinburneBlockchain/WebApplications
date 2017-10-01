@@ -1,60 +1,82 @@
-var express = require('express')
-var app = express()
-var cors = require('cors')
+var express = require('express');
+var app = express();
+var cors = require('cors');
 var bodyParser = require('body-parser');
 var MongoClient = require('mongodb').MongoClient
 var request = require("request");
 var randomstring = require("randomstring");
 var qr = require('qr-image');
+var ObjectId = require('mongodb').ObjectID;
+var mongoose = require('mongoose');
 
-// Connection URL
+// URL of MongoDB
 var url = 'mongodb://localhost:27017';
+
+// URL for your Nxt node
 var nxtUrl = 'http://ec2-52-64-224-239.ap-southeast-2.compute.amazonaws.com:6876/nxt?';
+
+// URL for Caching Server.
+var cacheServerUrl = 'http://ec2-54-153-202-123.ap-southeast-2.compute.amazonaws.com:3000/';
+
+// Nxt secret phrase of main ProductChain server
 var mainSecretPhrase = "curve excuse kid content gun horse leap poison girlfriend gaze poison comfort";
 
 var db;
 MongoClient.connect(url, function (err, database) {
    if (err)
    	throw err
-   else
-   {
-	db = database;
-	console.log('Connected to MongoDB');
-	//Start app only after connection is ready
-
-  db.createCollection("qrcodes", function(error, otherThing) {
-    if (error) throw error;
-      console.log("Collection created!");
-  });
-
-/*
-  db.createCollection("6f1d7a6cf2675206c7f756649721fa9db15c26ff8ea53173704a8c6949910458", function(error, otherThing) {
-    if (error) throw error;
-      console.log("Collection created!");
-  });
-*/
-
-  db.createCollection("e3463b3c51e85b064e3ac02eaf9ad9f5287f10ba27c92e4870d52db75644ca44", function(error, otherThing) {
-    if (error) throw error;
-      console.log("Collection created!");
-  });
-
-  db.createCollection("30f88475cb442e63cb3ab854d4c03d7c3a4a55634f85c690212ca443ead9eb6c", function(error, otherThing) {
-    if (error) throw error;
-      console.log("Collection created!");
-  });
-
-   var port = process.env.PORT || 3000;
-    app.listen(port, function (){
-        console.log('Listening on port 3000...')
+   else {
+  	db = database;
+    db.createCollection("qrcodes", function(error, otherThing) {
+      if (error) throw error;
     });
+
+  /*
+    db.createCollection("6f1d7a6cf2675206c7f756649721fa9db15c26ff8ea53173704a8c6949910458", function(error, otherThing) {
+      if (error) throw error;
+        console.log("Collection created!");
+    });
+  */
+
+    // Create a collection for each of the valid 'Producers'
+    db.createCollection("e3463b3c51e85b064e3ac02eaf9ad9f5287f10ba27c92e4870d52db75644ca44", function(error, otherThing) {
+      if (error) throw error;
+    });
+    insert = {
+      '_id': '0',
+      'name': 'John Egg Farm',
+      'location': 'Croydon Hills, Victoria'
+    }
+    db.collection("e3463b3c51e85b064e3ac02eaf9ad9f5287f10ba27c92e4870d52db75644ca44").insert(insert, function(err, doc) {
+      //if (err) throw err;
+    });
+
+    db.createCollection("30f88475cb442e63cb3ab854d4c03d7c3a4a55634f85c690212ca443ead9eb6c", function(error, otherThing) {
+      if (error) throw error;
+    });
+    insert = {
+      '_id': '0',
+      'name': 'Aidan Grocery Store',
+      'location': 'Gold Coast Shops, Queensland'
+    }
+    db.collection("30f88475cb442e63cb3ab854d4c03d7c3a4a55634f85c690212ca443ead9eb6c").insert(insert, function(err, doc) {
+      //if (err) throw err;
+    });
+
+    var port = process.env.PORT || 3000;
+      app.listen(port, function () {
+        console.log('MainServer - Listening on port 3000...')
+      });
    }
- });
+});
 
 //middleware
 app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended:true}));
+
+//API commands from additional .js files
+app.use(require('./CachingServer'));
 
 //GETTING QR CODE DETAILS
 function getQRDetailsFromNxt(cb) {
@@ -73,7 +95,6 @@ function getQRDetailsFromNxt(cb) {
   };
   function callback(error, response, body) {
     if (!error && response.statusCode == 200) {
-      console.log("Created Nxt Account: " + body.accountRS);
       cb(body.accountRS, body.publicKey, randSecretKey);
     }
   }
@@ -100,10 +121,12 @@ function findQRFromNxt(cb, prodAddr) {
 }
 
 function validateQR(accAddr, pubKey, privKey, producerAddr) {
-  request.post({url:nxtUrl, form: {requestType: 'sendMessage', secretPhrase: mainSecretPhrase, recipient: accAddr, message: 'VALID - ' + producerAddr, deadline: '60', feeNQT: '0'}},
+  request.post({url:nxtUrl, form: {requestType: 'sendMessage', secretPhrase: mainSecretPhrase, recipient: accAddr, message: 'VALIDATE - ' + producerAddr, deadline: '60', feeNQT: '0'}},
     function (error, response, body) {
       if (!error && response.statusCode == 200) {
-        //Update internetal db with qr code
+        // NO NEED TO CREATE COLLECTION OF QR HERE. DONE ON CACHINGSERVER INSTEAD
+        // WILL REMOVE LATER
+        /*
         db.createCollection(accAddr, function(error, otherThing) {
           if (!error) {
             insert = {
@@ -123,6 +146,7 @@ function validateQR(accAddr, pubKey, privKey, producerAddr) {
           }
 
         });
+        */
       } else {
         console.log("Error sending tx...");
         console.log(error);
@@ -131,13 +155,14 @@ function validateQR(accAddr, pubKey, privKey, producerAddr) {
   );
 }
 
+//MOVE QR
 function sendToBlockchain(productAddr, prodDestination, producerPubKey, producerPrivKey, productPubKey) {
   console.log("ADVANCED SENDING");
   request.post({url:nxtUrl, form: {requestType: 'sendMessage', secretPhrase: producerPrivKey, recipient: productAddr, recipientPublicKey: productPubKey, message: 'MOVE - ' + prodDestination, deadline: '60', feeNQT: '0'}},
     function (error, response, body) {
       if (!error && response.statusCode == 200) {
         console.log("Message sent successfully")
-
+        /*
         insert = {
           'action': 'SEND',
           'sourceAddr': producerPubKey,
@@ -146,7 +171,7 @@ function sendToBlockchain(productAddr, prodDestination, producerPubKey, producer
         db.collection(productAddr).insert(insert, function(err, doc) {
           if (err) throw err;
         });
-
+        */
         return true;
       } else {
         console.log("Error sending tx...");
@@ -157,6 +182,29 @@ function sendToBlockchain(productAddr, prodDestination, producerPubKey, producer
   );
 }
 
+function cacheQRInfo(accAddr, pubKey, privKey, producerAddr, producerPubKey, productName, productId, batchId) {
+  console.log('PRODUCER ADDR: ' + producerPubKey);
+
+  db.collection(producerPubKey).find({}).toArray(function(err, result) {
+     if (err) throw err;
+     result.forEach(function(value) {
+       request.post({url:cacheServerUrl + 'cacheQR', form: {qrAddress: accAddr, qrPubKey: pubKey,
+               qrPrivKey: privKey, producerAddr: producerAddr, productName: productName,
+               productId: productId, batchId: batchId, producerName: value.name, producerLocation: value.location}},
+         function (error, response, body) {
+           if (!error) {
+             console.log("MainServer - QR Code Cached")
+           } else {
+             console.log("MainServer - Error Caching QR Code");
+             console.log(error);
+           }
+         }
+       );
+     });
+  });
+}
+
+//
 app.post('/findqr', function (req, res) {
   var prodAddr = req.body.prodAddr;
 
@@ -194,20 +242,20 @@ app.post('/getqr', function (req, res) {
     collInfos.forEach(function(value) {
       if(String(value.name) == (producerPubKey)) {
         getQRDetailsFromNxt(function(accAddr, pubKey, privKey) {
-          console.log("-----------");
-          console.log("Address: " + accAddr);
-          console.log("Pub Key: " + pubKey);
-          console.log("Priv Key: " + privKey);
-          console.log("-----------");
+          console.log("MainServer - ------------------");
+          console.log("MainServer - Address: " + accAddr);
+          console.log("MainServer - Pub Key: " + pubKey);
+          console.log("MainServer - Priv Key: " + privKey);
+          console.log("MainServer - ------------------");
 
           validateQR(accAddr, pubKey, privKey, producerAddr);
+          cacheQRInfo(accAddr, pubKey, privKey, producerAddr, producerPubKey, productName, productId, batchId);
 
           qrString = "{\"accAddr\":" + "\"" + accAddr + "\"" + ",\"pubKey\":" + "\"" + pubKey + "\"" + ",\"privKey\":" + "\"" + privKey + "\"" + "}";
           var qrSvgString = qr.imageSync(qrString, {type: 'svg'});
 
           res.send(qrSvgString);
         });
-        console.log("Existing Table");
       } else {
         //Something here?
       }
@@ -232,6 +280,8 @@ app.post('/getqrtest', function (req, res) {
           qrString = "{\"accAddr\":" + "\"" + accAddr + "\"" + ",\"pubKey\":" + "\"" + pubKey + "\"" + ",\"privKey\":" + "\"" + privKey + "\"" + "}";
           var qrSvgString = qr.imageSync(qrString, {type: 'svg'});
 
+          // UNCOMMENT THIS!
+          /*
           insert = {
             'acc': accAddr,
             'pubKey': pubKey,
@@ -242,6 +292,7 @@ app.post('/getqrtest', function (req, res) {
             console.log("QR Code inserted");
 
           });
+          */
           res.send(qrSvgString);
         });
         console.log("Existing Table");
@@ -253,14 +304,13 @@ app.post('/getqrtest', function (req, res) {
 });
 
 //Remove the QRCodes Collection. Only temporary
-app.get('/removeqr', (req, res) => {
-  res.send(db.collection("e3463b3c51e85b064e3ac02eaf9ad9f5287f10ba27c92e4870d52db75644ca44").drop())
+app.get('/removeAll', (req, res) => {
+  db.dropDatabase();
 })
 
 app.get('/getqr', (req, res) => {
 	console.log('Getting Query!');
-
-  db.collection("NXT-RUF4-5GGQ-FPGJ-DRP75").find({}).toArray(function(err, result) {
+  db.collection("e3463b3c51e85b064e3ac02eaf9ad9f5287f10ba27c92e4870d52db75644ca44").find({}).toArray(function(err, result) {
      if (err) throw err;
 	   res.send(result)
      console.log(result);
