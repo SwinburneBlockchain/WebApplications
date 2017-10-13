@@ -2,7 +2,7 @@
   "name": "server",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "QRCodeServer.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -13,6 +13,7 @@
     "cors": "^2.8.4",
     "express": "^4.15.4",
     "mongodb": "^3.2.16",
+    "node-rsa": "^0.4.2",
     "nodemon": "^1.12.0",
     "qr-image": "^3.2.0",
     "randomstring": "^1.1.5",

@@ -110,7 +110,7 @@ MongoClient.connect(url, function (err, database) {
     */
     var port = process.env.PORT || 3000;
       app.listen(port, function () {
-        console.log('MainServer - Listening on port 3000...')
+        console.log('QRCodeServer - Listening on port 3000...')
       });
    }
 });
@@ -201,9 +201,9 @@ function validateQR(accAddr, pubKey, privKey, producerAddr) {
 }
 
 //MOVE QR
-function sendToBlockchain(productAddr, prodDestination, producerPubKey, producerPrivKey, productPubKey) {
+function sendToBlockchain(productAddr, prodDestination, producerPubKey, ivKey, productPubKey) {
   console.log("ADVANCED SENDING");
-  request.post({url:nxtUrl, form: {requestType: 'sendMessage', secretPhrase: producerPrivKey, recipient: productAddr, recipientPublicKey: productPubKey, message: 'MOVE - ' + prodDestination, deadline: '60', feeNQT: '0'}},
+  request.post({url:nxtUrl, form: {requestType: 'sendMessage', secretPhrase: ivKey, recipient: productAddr, recipientPublicKey: productPubKey, message: 'MOVE - ' + prodDestination, deadline: '60', feeNQT: '0'}},
     function (error, response, body) {
       if (!error && response.statusCode == 200) {
         console.log("Message sent successfully")
@@ -238,9 +238,9 @@ function cacheQRInfo(accAddr, pubKey, privKey, producerAddr, producerPubKey, pro
                productId: productId, batchId: batchId, producerName: value.name, producerLocation: value.location}},
          function (error, response, body) {
            if (!error) {
-             console.log("MainServer - QR Code Cached")
+             console.log("QRCodeServer - QR Code Cached")
            } else {
-             console.log("MainServer - Error Caching QR Code");
+             console.log("QRCodeServer - Error Caching QR Code");
              console.log(error);
            }
          }
@@ -262,19 +262,22 @@ app.post('/findqr', function (req, res) {
 });
 
 app.post('/moveqr', function (req, res) {
-  console.log('MainServer - Product Being Moved');
+  console.log('QRCodeServer - Product Being Moved');
   var producerPubKey = req.body.pubKey;
-  var producerPrivKey = req.body.privKey;
+  var ivKey = req.body.privKey;
   var productAddr = req.body.prodAddr;
   var productPubKey = req.body.prodPubKey;
   var prodDestination = req.body.destination;
 
   //prodDestination is set as 'message' in this transaction.
-  sendToBlockchain(productAddr, prodDestination, producerPubKey, producerPrivKey, productPubKey)
+  sendToBlockchain(productAddr, prodDestination, producerPubKey, ivKey, productPubKey)
   res.send("QR code updated successfully.");
 });
 
-//Producer Requests New QR Code
+/*
+  Handles the Producer requests for new QR Codes.
+  Ensures only valid Producers can request QR codes
+*/
 app.post('/getqr', function (req, res) {
   console.log("Requesting QR Code...");
 
@@ -284,103 +287,55 @@ app.post('/getqr', function (req, res) {
   var productId = req.body.productID;
   var batchId = req.body.batchID;
 
-  db.listCollections().toArray(function(err, collInfos) {
-    collInfos.forEach(function(value) {
-      if(String(value.name) == ('PRODUCER - ' + producerAddr)) {
-        getQRDetailsFromNxt(function(accAddr, pubKey, privKey) {
-          console.log("MainServer - ------------------");
-          console.log("MainServer - Address: " + accAddr);
-          console.log("MainServer - Pub Key: " + pubKey);
-          console.log("MainServer - Priv Key: " + privKey);
-          console.log("MainServer - ------------------");
+  var data = req.body.data;
+  var nonce = req.body.nonce;
 
-          validateQR(accAddr, pubKey, privKey, producerAddr);
-          cacheQRInfo(accAddr, pubKey, privKey, producerAddr, producerPubKey, productName, productId, batchId);
+  request.post({url:nxtUrl, form: {
+                requestType: 'decryptFrom',
+                secretPhrase: mainSecretPhrase,
+                account: producerAddr,
+                data: data,
+                nonce: nonce
+              }},
+    function (error, response, body) {
+      var bodyJSON = JSON.parse(body);
+      if (!error && bodyJSON.decryptedMessage == "requestQR") {
+        console.log("QRCodeServer - Valid QR Code Request")
 
-          qrString = "{\"accAddr\":" + "\"" + accAddr + "\"" + ",\"pubKey\":" + "\"" + pubKey + "\"" + ",\"privKey\":" + "\"" + privKey + "\"" + "}";
-          var qrSvgString = qr.imageSync(qrString, {type: 'svg'});
+        db.listCollections().toArray(function(err, collInfos) {
+          collInfos.forEach(function(value) {
+            if(String(value.name) == ('PRODUCER - ' + producerAddr)) {
 
-          res.send(qrSvgString);
-        });
-      } else {
-        //Something here?
-      }
-    });
-  });
-});
 
-app.post('/getqrtest', function (req, res) {
-  console.log("Requesting QR Code Test");
+              getQRDetailsFromNxt(function(accAddr, pubKey, privKey) {
+                console.log("QRCodeServer - ------------------");
+                console.log("QRCodeServer - Address: " + accAddr);
+                console.log("QRCodeServer - Pub Key: " + pubKey);
+                console.log("QRCodeServer - Priv Key: " + privKey);
+                console.log("QRCodeServer - ------------------");
 
-  var producerAddr = req.body.accAddr;
-  var producerPubKey = req.body.pubKey;
-  var productName = req.body.productName;
-  var productId = req.body.productID;
-  var batchId = req.body.batchID;
+                validateQR(accAddr, pubKey, privKey, producerAddr);
+                cacheQRInfo(accAddr, pubKey, privKey, producerAddr, producerPubKey, productName, productId, batchId);
 
-  db.listCollections().toArray(function(err, collInfos) {
-    collInfos.forEach(function(value) {
-      if(String(value.name) == ('PRODUCER - ' + producerAddr)) {
-        console.log("Found table name with same public key");
-        getQRDetailsFromNxt(function(accAddr, pubKey, privKey) {
-          qrString = "{\"accAddr\":" + "\"" + accAddr + "\"" + ",\"pubKey\":" + "\"" + pubKey + "\"" + ",\"privKey\":" + "\"" + privKey + "\"" + "}";
-          var qrSvgString = qr.imageSync(qrString, {type: 'svg'});
+                qrString = "{\"accAddr\":" + "\"" + accAddr + "\"" + ",\"pubKey\":" + "\"" + pubKey + "\"" + ",\"privKey\":" + "\"" + privKey + "\"" + "}";
+                var qrSvgString = qr.imageSync(qrString, {type: 'svg'});
 
-          // UNCOMMENT THIS!
-          /*
-          insert = {
-            'acc': accAddr,
-            'pubKey': pubKey,
-            'privKey': privKey
-          }
-          db.collection(producerPubKey).insert(insert, function(err, doc) {
-            if (err) throw err;
-            console.log("QR Code inserted");
-
+                res.send(qrSvgString);
+              });
+            }
           });
-          */
-          res.send(qrSvgString);
         });
-        console.log("Existing Table");
       } else {
-        //Something here
+        console.log("QRCodeServer - Invalid Producer Requesting QR Code, or Error with Request.");
+        console.log(error);
       }
-    });
-  });
+    }
+  );
 });
 
-app.post('/producerInfo', function(req, res) {
-  var producerAddr = req.body.producerAddr;
-  db.collection('PRODUCER - ' + producerAddr).find({}).toArray(function(err, result) {
-    result.forEach(function(value) {
-      res.send(value);
-    });
-  });
-});
-
-//Remove the QRCodes Collection. Only temporary
+// Remove all Collections from MongoDB
+/*
 app.get('/removeAll', (req, res) => {
   db.dropDatabase();
 })
-
-app.get('/getqr', (req, res) => {
-	console.log('Getting Query!');
-  db.collection("NXT-QBU9-KSX6-6TH4-H47LR").find({}).toArray(function(err, result) {
-     if (err) throw err;
-	   res.send(result)
-     console.log(result);
-  });
-})
-
-app.get('/gettables', (req, res) => {
-db.listCollections().toArray(function(err, collInfos) {
-  collInfos.forEach(function(value) {
-    console.log(value);
-  });
-});
-})
-
-app.post('/test', function (req, res) {
-  console.log("Requesting QR Code");
-  console.log(req.body);
-})
+*/
