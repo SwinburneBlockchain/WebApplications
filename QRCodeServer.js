@@ -1,14 +1,14 @@
 var express = require('express');
 var app = express();
-var cors = require('cors');
+//var cors = require('cors');
 var bodyParser = require('body-parser');
 var MongoClient = require('mongodb').MongoClient
 var request = require("request");
 var randomstring = require("randomstring");
 var qr = require('qr-image');
-var mongoose = require('mongoose');
+//var mongoose = require('mongoose');
 
-// URL of MongoDB
+// URL of MongoDB. Only change if MongoDB is in different location to server.
 var url = 'mongodb://localhost:27017';
 
 /*
@@ -23,11 +23,16 @@ var nxtUrl = 'http://ec2-52-64-224-239.ap-southeast-2.compute.amazonaws.com:6876
 */
 var cacheServerUrl = 'http://ec2-54-153-202-123.ap-southeast-2.compute.amazonaws.com:3000/';
 
-// Nxt secret phrase of main ProductChain server
-var mainSecretPhrase = "curve excuse kid content gun horse leap poison girlfriend gaze poison comfort";
+/*
+  Nxt secret phrase and address of main ProductChain server.
+  Change these if required.
+*/
+var productChainSecretPhrase = "curve excuse kid content gun horse leap poison girlfriend gaze poison comfort";
+var productChainAddress = "NXT-HP3G-T95S-6W2D-AEPHE";
 
 /*
-  List of valid producers. Inludes Nxt address, name of Producer, and Producer's location
+  List of valid producers. Inludes Nxt address, name of Producer, and Producer's location(?)
+  Change these if required.
 */
 var validProducers = [
   ['NXT-HP3G-T95S-6W2D-AEPHE', 'ProductChain Server', 'Swinburne Hawthorn, Victoria'],
@@ -36,7 +41,8 @@ var validProducers = [
 ];
 
 /*
-  Initialises Mongodb database, and
+  Initialises Mongodb database, and adds valid producer Collections
+  Sets port 3000 as API port.
 */
 var db;
 MongoClient.connect(url, function (err, database) {
@@ -65,49 +71,8 @@ MongoClient.connect(url, function (err, database) {
       });
 
     });
-    /*
-    // Nxt information on the ProductChain server
-    db.createCollection("PRODUCER - NXT-HP3G-T95S-6W2D-AEPHE", function(error, otherThing) {
-      if (error) throw error;
-    });
-    insert = {
-      '_id': '0',
-      'name': 'ProductChain Server',
-      'location': 'Swinburne Hawthorn, Victoria'
-    }
-    db.collection("PRODUCER - NXT-HP3G-T95S-6W2D-AEPHE").insert(insert, function(err, doc) {
-      //if (err) throw err;
-    });
 
-    // Create a collection for each of the valid 'Producers'
-    db.createCollection("PRODUCER - NXT-QBU9-KSX6-6TH4-H47LR", function(error, otherThing) {
-      if (error) throw error;
-    });
-    insert = {
-      '_id': '0',
-      'name': 'John Egg Farm',
-      'location': 'Croydon Hills, Victoria'
-    }
-    db.collection("PRODUCER - NXT-QBU9-KSX6-6TH4-H47LR").insert(insert, function(err, doc) {
-      //if (err) throw err;
-    });
-
-    db.createCollection("PRODUCER - NXT-MNDK-R2CB-TX4W-AKH4U", function(error, otherThing) {
-      if (error) throw error;
-    });
-    insert = {
-      '_id': '0',
-      'name': 'Aidan Grocery Store',
-      'location': 'Gold Coast Shops, Queensland'
-    }
-    db.collection("PRODUCER - NXT-MNDK-R2CB-TX4W-AKH4U").insert(insert, function(err, doc) {
-      //if (err) throw err;
-    });
-*/
-
-    /*
-      Creates port and server starts listening for requests.
-    */
+    //Creates port and server starts listening for requests.
     var port = process.env.PORT || 3000;
       app.listen(port, function () {
         console.log('QRCodeServer - Listening on port 3000...')
@@ -116,19 +81,25 @@ MongoClient.connect(url, function (err, database) {
 });
 
 //Middleware
-app.use(cors());
+//app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended:true}));
 
-//API commands from additional .js files
-//app.use(require('./CachingServer'));
+/*
+  API commands from additional .js files.
+  Comment this out if running on individual servers.
+*/
+app.use(require('./CachingServer'));
+app.use(require('./VerificationServer'));
 
-//GETTING QR CODE DETAILS
+/*
+  Generates a random string to be used as new QR code's private key.
+  Contacts Nxt blockchain and retrieves public key and address associated with private key.
+*/
 function getQRDetailsFromNxt(cb) {
   var randSecretKey = randomstring.generate(16);
 
   console.log("Received QR Code request");
-  //API Says POST Only??
   const options = {
     method: 'GET',
     uri: nxtUrl,
@@ -146,6 +117,8 @@ function getQRDetailsFromNxt(cb) {
   request(options, callback);
 }
 
+// DELETE this
+/*
 function findQRFromNxt(cb, prodAddr) {
   //API Says POST Only??
   const options = {
@@ -164,34 +137,16 @@ function findQRFromNxt(cb, prodAddr) {
   }
   request(options, callback);
 }
+*/
 
+/*
+  Sends a transaction to generated QR code address, with 'VALIDATE' in the message
+  field. This validates the QR code.
+*/
 function validateQR(accAddr, pubKey, privKey, producerAddr) {
-  request.post({url:nxtUrl, form: {requestType: 'sendMessage', secretPhrase: mainSecretPhrase, recipient: accAddr, message: 'VALIDATE - ' + producerAddr, deadline: '60', feeNQT: '0'}},
+  request.post({url:nxtUrl, form: {requestType: 'sendMessage', secretPhrase: productChainSecretPhrase, recipient: accAddr, message: 'VALIDATE - ' + producerAddr, deadline: '60', feeNQT: '0'}},
     function (error, response, body) {
       if (!error && response.statusCode == 200) {
-        // NO NEED TO CREATE COLLECTION OF QR HERE. DONE ON CACHINGSERVER INSTEAD
-        // WILL REMOVE LATER
-        /*
-        db.createCollection(accAddr, function(error, otherThing) {
-          if (!error) {
-            insert = {
-              'action': 'VALIDATE',
-              'acc': accAddr,
-              'pubKey': pubKey,
-              'privKey': privKey
-            }
-            db.collection(accAddr).insert(insert, function(err, doc) {
-              if (err) throw err;
-            });
-            console.log("New QR Code Collection Created!");
-
-          } else {
-            console.log("Error occurred creating QR Code collection...");
-            console.log(error);
-          }
-
-        });
-        */
       } else {
         console.log("Error sending tx...");
         console.log(error);
@@ -227,8 +182,11 @@ function sendToBlockchain(productAddr, prodDestination, producerPubKey, ivKey, p
   );
 }
 
+/*
+  Once QR code has been generated and validated, it is sent to the cache server.
+*/
 function cacheQRInfo(accAddr, pubKey, privKey, producerAddr, producerPubKey, productName, productId, batchId) {
-  console.log('PRODUCER ADDR: ' + producerPubKey);
+  console.log('QRCodeServer - Sending QR Code to Caching erver');
 
   db.collection('PRODUCER - ' + producerAddr).find({}).toArray(function(err, result) {
      if (err) throw err;
@@ -249,7 +207,8 @@ function cacheQRInfo(accAddr, pubKey, privKey, producerAddr, producerPubKey, pro
   });
 }
 
-//
+//DELETE this
+/*
 app.post('/findqr', function (req, res) {
   var prodAddr = req.body.prodAddr;
 
@@ -260,7 +219,11 @@ app.post('/findqr', function (req, res) {
 
   console.log("Finding QR Code...");
 });
+*/
 
+/*
+  Moves product.
+*/
 app.post('/moveqr', function (req, res) {
   console.log('QRCodeServer - Product Being Moved');
   var producerPubKey = req.body.pubKey;
@@ -269,14 +232,26 @@ app.post('/moveqr', function (req, res) {
   var productPubKey = req.body.prodPubKey;
   var prodDestination = req.body.destination;
 
-  //prodDestination is set as 'message' in this transaction.
-  sendToBlockchain(productAddr, prodDestination, producerPubKey, ivKey, productPubKey)
-  res.send("QR code updated successfully.");
+  request.post({url:cacheServerUrl + 'checkIfValid', form: {
+                accAddr: productAddr,
+                checkAddr: productChainAddress
+              }},
+    function (error, response, body) {
+      if(body == "true") {
+        prodDestination is set as 'message' in this transaction.
+        sendToBlockchain(productAddr, prodDestination, producerPubKey, ivKey, productPubKey)
+        console.log("QRCodeServer - Product Moved Successfully");
+        res.send("QR code moved successfully.");
+      } else {
+        console.log("QRCodeServer - Product Not Valid");
+      }
+    });
 });
 
 /*
   Handles the Producer requests for new QR Codes.
-  Ensures only valid Producers can request QR codes
+  Ensures only valid Producers can request QR codes by decrypting the message
+  sent by the producer.
 */
 app.post('/getqr', function (req, res) {
   console.log("Requesting QR Code...");
@@ -287,12 +262,22 @@ app.post('/getqr', function (req, res) {
   var productId = req.body.productID;
   var batchId = req.body.batchID;
 
+  /*
+    Included in the getqr request from a producer is encrypted data and a nonce.
+    This is encrypted on the Producer's side, and is used to verify that the request
+    came from a valid producer.
+  */
   var data = req.body.data;
   var nonce = req.body.nonce;
 
+  /*
+    Contacts Nxt node to decrypt message from producer.
+    If message can be successfully decrypted using the provided information, then
+    QR code is generated and sent back to Producer.
+  */
   request.post({url:nxtUrl, form: {
                 requestType: 'decryptFrom',
-                secretPhrase: mainSecretPhrase,
+                secretPhrase: productChainSecretPhrase,
                 account: producerAddr,
                 data: data,
                 nonce: nonce
@@ -305,8 +290,6 @@ app.post('/getqr', function (req, res) {
         db.listCollections().toArray(function(err, collInfos) {
           collInfos.forEach(function(value) {
             if(String(value.name) == ('PRODUCER - ' + producerAddr)) {
-
-
               getQRDetailsFromNxt(function(accAddr, pubKey, privKey) {
                 console.log("QRCodeServer - ------------------");
                 console.log("QRCodeServer - Address: " + accAddr);
@@ -329,11 +312,28 @@ app.post('/getqr', function (req, res) {
         console.log("QRCodeServer - Invalid Producer Requesting QR Code, or Error with Request.");
         console.log(error);
       }
-    }
-  );
+    });
 });
 
-// Remove all Collections from MongoDB
+/*
+  Returns information about valid producers.
+  Accessed by the Caching Server.
+*/
+app.post('/producerInfo', function(req, res) {
+  var producerAddr = req.body.producerAddr;
+  db.collection('PRODUCER - ' + producerAddr).find({}).toArray(function(err, result) {
+    result.forEach(function(value) {
+      res.send(value);
+    });
+  });
+});
+
+
+/*
+Remove all Collections from MongoDB.
+Comment out this when not required. Only use for administrative purpose (start with fresh Mongodb)
+*/
+
 /*
 app.get('/removeAll', (req, res) => {
   db.dropDatabase();

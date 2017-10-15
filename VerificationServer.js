@@ -3,11 +3,11 @@ var app = express();
 var MongoClient = require('mongodb').MongoClient
 var request = require("request");
 var NodeRSA = require('node-rsa');
+var router = express.Router();
 var bodyParser = require('body-parser');
 
 var locationServers = [
-  ['publicKey', 'location'],
-  ['publicKey', 'location']
+  ['-----BEGIN PUBLIC KEY-----MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA06xM2/v5p8y2ll83Fo1p6lCUl7yMxWMLBleXdOOCpbVykXGfANaJd8rM/ZFQRTN13nxkXOC20BQwzCSYIU0GvpFzTNHF9oPVsGKu3u/7LdoqvMqRkF0Cl14OVizJRy+ORS9ZsKfZt48O7ndsBiy79WUkr9Wpp8JDmeEPLNItOpsGolwyszq5XaKZIMTHQsHdNWaL0CzB+1lCP7LnpdOKyHaKgKV686I5ijE/5FpSoEOEhJCV0v2PgXUv/QtdtnHg9WNGnGH4cK3lRmYTJiqAS3YbzqDS5tsMAfU5JnXFd3Hu0CaOC79gdYqf1jYAIBd6jz11q0OBxFYG68aMgk/aUQIDAQAB-----END PUBLIC KEY-----', 'Croydon Hills, Victoria']
 ];
 
 var url = 'mongodb://localhost:27017';
@@ -36,42 +36,43 @@ MongoClient.connect(url, function (err, database) {
    });
  });
 
+/*
  var port = process.env.PORT || 3000;
    app.listen(port, function () {
      console.log('VerificationServer - Listening on port 3000...')
    });
+*/
 });
 
 // Middleware
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended:true}));
 
-app.post('/testEncryption', function(req, res) {
-  console.log(req.body);
-  var privateKey = req.body.privateKey;
-  var locationProofMessage = req.body.locationProof;
+router.post('/verifyLocation', function(req, res) {
+    console.log("VerificationServer - Location Verify Request" );
+    var publicKey = req.body.publicKey;
+    var locationProof = req.body.locationProof;
 
-  var key = new NodeRSA(privateKey);
+    var collection = db.collection('locationServers');
 
-  var encrypted = key.encrypt(locationProofMessage, 'utf8');
-  res.send(encrypted);
+    collection.findOne({publicKey: publicKey}, function(err, doc) {
+      if(doc == null) {
+        console.log("VerificationServer - Public Key not found");
+      } else {
+        var key = new NodeRSA();
+        key.importKey(publicKey);
+
+        var validResult = key.verify("VALID_LOCATION", locationProof, "utf8", "hex");
+
+        if(validResult) {
+          res.send(validResult + " | " + doc.location);
+          console.log("VerificationServer - Verified Location. Results Sent");
+        } else {
+          res.send(validResult);
+          console.log("VerificationServer - Location not verified");
+        }
+      }
+    });
 });
 
-app.post('/testDecryption', function(req, res) {
-  var collection = db.collection('locationServers');
-  collection.findOne({publicKey: 'publicKey'}, function(err, doc) {
-    if( doc == null ) {
-        console.log("Not found in Collection");
-    } else {
-        console.log("Found in Collection");
-    }
-  });
-  var publicKey = req.body.publicKey;
-  var locationProof = req.body.locationProof;
-  var key = new NodeRSA(publicKey, 'pkcs8-public');
-
-
-  var decrypted = key.verify("message", locationProof);
-
-  res.send(decrypted);
-});
+module.exports = router;

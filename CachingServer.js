@@ -1,13 +1,15 @@
 var express = require('express');
+var app = express();
 var MongoClient = require('mongodb').MongoClient
 var request = require("request");
 var ObjectId = require('mongodb').ObjectID;
 var router = express.Router();
+var bodyParser = require('body-parser');
 
 // URL for your Nxt node
 var nxtUrl = 'http://ec2-52-64-224-239.ap-southeast-2.compute.amazonaws.com:6876/nxt?';
 
-var mainServerUrl = 'http://ec2-54-153-202-123.ap-southeast-2.compute.amazonaws.com:3000/';
+var QRCodeServerURL = 'http://ec2-54-153-202-123.ap-southeast-2.compute.amazonaws.com:3000/';
 
 var url = 'mongodb://localhost:27017';
 var db;
@@ -18,14 +20,25 @@ if (err)
  else {
    db = database;
    console.log('CachingServer - Connected to MongoDB');
+
+
  }
 
  db.createCollection('products', function(error, otherThing) {
    if (error) throw error;
      console.log("CachingServer - Products Collection Created!");
  });
+/*
+ var port = process.env.PORT || 3000;
+   app.listen(port, function () {
+     console.log('CachingServer - Listening on port 3000...')
+   });
+   */
 });
-
+/*
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended:true}));
+*/
 function updateProducts() {
   db.listCollections().toArray(function(err, collInfos) {
     collInfos.forEach(function(value) {
@@ -49,7 +62,7 @@ function updateProducts() {
               //console.log(collectionName + ": " + JSON.stringify(value));
               var arr = value.attachment.message.split(" - ");
 
-              request.post({url:mainServerUrl + 'producerInfo', form: {producerAddr: arr[1]}},
+              request.post({url:QRCodeServerURL + 'producerInfo', form: {producerAddr: arr[1]}},
                 function (error, response, body) {
                   var jsonObj = JSON.parse(body);
                   if (!error && response.statusCode == 200) {
@@ -67,7 +80,6 @@ function updateProducts() {
                     });
                     intCount++;
                     db.collection(collectionName).insert(insert, function(err, doc) {
-                      //if (err) throw err;
                     });
 
                   } else {
@@ -88,7 +100,6 @@ function updateProducts() {
 setInterval(function() {
   console.log("CachingServer - Scheduled Update...");
   updateProducts();
-  // do your stuff here
 }, 10000);
 
 router.post('/cacheQR', function(req, res) {
@@ -124,9 +135,32 @@ router.post('/cacheQR', function(req, res) {
   console.log(producerLocation);
   console.log('------');
 
-  console.log('ADDING PRODUCT!!!');
   db.collection('PRODUCT - ' + qrAddress).insert(insert, function(err, doc) {
     if (err) throw err;
+  });
+});
+
+/*
+  Checks if a product has been validated.
+  Takes in a product address, and the address which made the validation.
+*/
+router.post('/checkIfValid', function(req, res) {
+  console.log("CachingServer - Checking if Product is Valid");
+  var productAddr = req.body.accAddr;
+  var checkAddr = req.body.checkAddr;
+
+  db.collection('PRODUCT - ' + productAddr).find({}).toArray(function(err, result) {
+    var sendString = "false";
+
+    result.forEach(function(value) {
+      console.log("ACTION: " + value.action);
+      if(value.action == "VALIDATE" && value.actionAddress == checkAddr) {
+        console.log("Product has been VALIDATED");
+        sendString = "true";
+      }
+    });
+
+    res.send(sendString);
   });
 });
 
@@ -164,18 +198,12 @@ router.get('/productInfo/:accAddr', function(req, res) {
   });
 });
 
-// Define the about route
-router.get('/about', function(req, res) {
-  res.send('About us');
-});
-
-// Define the test1 route
-router.get('/test1', function(req, res) {
-  db.collection("products").find({}).toArray(function(err, result) {
-    console.log('PRINTING PROUCTS');
-     if (err) throw err;
-     res.send(result)
+router.get('/gettables', (req, res) => {
+db.listCollections().toArray(function(err, collInfos) {
+  collInfos.forEach(function(value) {
+    console.log(value);
   });
 });
+})
 
 module.exports = router;
