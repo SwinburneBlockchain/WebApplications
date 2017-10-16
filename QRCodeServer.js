@@ -72,6 +72,11 @@ MongoClient.connect(url, function (err, database) {
 
     });
 
+    db.createCollection('QRCodeRequestTimestamps', function(error, otherThing) {
+      if (error) throw error;
+      console.log("VerificationServer - Location Servers Collection Created!");
+    });
+
     //Creates port and server starts listening for requests.
     var port = process.env.PORT || 3000;
       app.listen(port, function () {
@@ -89,8 +94,8 @@ app.use(bodyParser.urlencoded({ extended:true}));
   API commands from additional .js files.
   Comment this out if running on individual servers.
 */
-app.use(require('./CachingServer'));
-app.use(require('./VerificationServer'));
+//app.use(require('./CachingServer'));
+//app.use(require('./VerificationServer'));
 
 /*
   Generates a random string to be used as new QR code's private key.
@@ -117,28 +122,6 @@ function getQRDetailsFromNxt(cb) {
   request(options, callback);
 }
 
-// DELETE this
-/*
-function findQRFromNxt(cb, prodAddr) {
-  //API Says POST Only??
-  const options = {
-    method: 'GET',
-    uri: nxtUrl,
-    json: true,
-    qs: {
-      requestType: "getBlockchainTransactions",
-      account: prodAddr
-    }
-  };
-  function callback(error, response, body) {
-    if (!error && response.statusCode == 200) {
-      cb(body.transactions);
-    }
-  }
-  request(options, callback);
-}
-*/
-
 /*
   Sends a transaction to generated QR code address, with 'VALIDATE' in the message
   field. This validates the QR code.
@@ -155,7 +138,8 @@ function validateQR(accAddr, pubKey, privKey, producerAddr) {
   );
 }
 
-//MOVE QR
+// MOVE QR
+// DELETE THIS
 function sendToBlockchain(productAddr, prodDestination, producerPubKey, ivKey, productPubKey) {
   console.log("ADVANCED SENDING");
   request.post({url:nxtUrl, form: {requestType: 'sendMessage', secretPhrase: ivKey, recipient: productAddr, recipientPublicKey: productPubKey, message: 'MOVE - ' + prodDestination, deadline: '60', feeNQT: '0'}},
@@ -207,22 +191,40 @@ function cacheQRInfo(accAddr, pubKey, privKey, producerAddr, producerPubKey, pro
   });
 }
 
-//DELETE this
 /*
-app.post('/findqr', function (req, res) {
-  var prodAddr = req.body.prodAddr;
-
-  findQRFromNxt(function(transactions) {
-    console.log("TRANSACTIONS");
-    console.log(transactions);
-  }, prodAddr);
-
-  console.log("Finding QR Code...");
-});
+  Check to see if a timestamp has been linked to a Producer previously.
 */
+function verifyTimestamp(timestamp, producerAddress) {
+  console.log("QRCodeServer - VERIFYING TIMESTAMP");
+  var collection = db.collection('QRCodeRequestTimestamps');
+
+  var returnBoolean = "";
+
+  collection.findOne({producerAddress: producerAddress, timestamp: timestamp}, function(err, doc) {
+    if(!doc) {
+      insert = {
+        'producerAddress': producerAddress,
+        'timestamp': timestamp
+      }
+
+      db.collection('QRCodeRequestTimestamps').insert(insert, function(err, doc) {
+      });
+
+      returnBoolean = true;
+    } else {
+      returnBoolean = false;
+    }
+  });
+  while(returnBoolean === "") {
+    require('deasync').runLoopOnce();
+  }
+
+  return returnBoolean;
+}
 
 /*
   Moves product.
+  DELETE THIS
 */
 app.post('/moveqr', function (req, res) {
   console.log('QRCodeServer - Product Being Moved');
@@ -238,7 +240,6 @@ app.post('/moveqr', function (req, res) {
               }},
     function (error, response, body) {
       if(body == "true") {
-        prodDestination is set as 'message' in this transaction.
         sendToBlockchain(productAddr, prodDestination, producerPubKey, ivKey, productPubKey)
         console.log("QRCodeServer - Product Moved Successfully");
         res.send("QR code moved successfully.");
@@ -265,8 +266,10 @@ app.post('/getqr', function (req, res) {
   /*
     Included in the getqr request from a producer is encrypted data and a nonce.
     This is encrypted on the Producer's side, and is used to verify that the request
-    came from a valid producer.
+    came from a valid producer. Data encrypted is a timestamp of the time the Producer
+    requested the QR code.
   */
+  var timestamp = req.body.timestamp;
   var data = req.body.data;
   var nonce = req.body.nonce;
 
@@ -284,30 +287,34 @@ app.post('/getqr', function (req, res) {
               }},
     function (error, response, body) {
       var bodyJSON = JSON.parse(body);
-      if (!error && bodyJSON.decryptedMessage == "requestQR") {
-        console.log("QRCodeServer - Valid QR Code Request")
+      if (!error && bodyJSON.decryptedMessage == timestamp) {
+        if(verifyTimestamp(timestamp, producerAddr)) {
+            console.log("QRCodeServer - Valid QR Code Request")
 
-        db.listCollections().toArray(function(err, collInfos) {
-          collInfos.forEach(function(value) {
-            if(String(value.name) == ('PRODUCER - ' + producerAddr)) {
-              getQRDetailsFromNxt(function(accAddr, pubKey, privKey) {
-                console.log("QRCodeServer - ------------------");
-                console.log("QRCodeServer - Address: " + accAddr);
-                console.log("QRCodeServer - Pub Key: " + pubKey);
-                console.log("QRCodeServer - Priv Key: " + privKey);
-                console.log("QRCodeServer - ------------------");
+            db.listCollections().toArray(function(err, collInfos) {
+              collInfos.forEach(function(value) {
+                if(String(value.name) == ('PRODUCER - ' + producerAddr)) {
+                  getQRDetailsFromNxt(function(accAddr, pubKey, privKey) {
+                    console.log("QRCodeServer - ------ QR CODE ------");
+                    console.log("QRCodeServer - Address: " + accAddr);
+                    console.log("QRCodeServer - Pub Key: " + pubKey);
+                    console.log("QRCodeServer - Priv Key: " + privKey);
+                    console.log("QRCodeServer - ---------------------");
 
-                validateQR(accAddr, pubKey, privKey, producerAddr);
-                cacheQRInfo(accAddr, pubKey, privKey, producerAddr, producerPubKey, productName, productId, batchId);
+                    validateQR(accAddr, pubKey, privKey, producerAddr);
+                    cacheQRInfo(accAddr, pubKey, privKey, producerAddr, producerPubKey, productName, productId, batchId);
 
-                qrString = "{\"accAddr\":" + "\"" + accAddr + "\"" + ",\"pubKey\":" + "\"" + pubKey + "\"" + ",\"privKey\":" + "\"" + privKey + "\"" + "}";
-                var qrSvgString = qr.imageSync(qrString, {type: 'svg'});
+                    qrString = "{\"accAddr\":" + "\"" + accAddr + "\"" + ",\"pubKey\":" + "\"" + pubKey + "\"" + ",\"privKey\":" + "\"" + privKey + "\"" + "}";
+                    var qrSvgString = qr.imageSync(qrString, {type: 'svg'});
 
-                res.send(qrSvgString);
+                    res.send(qrSvgString);
+                  });
+                }
               });
-            }
-          });
-        });
+            });
+          } else {
+            console.log("QRCodeServer - Could Not Validate Timestamp");
+          }
       } else {
         console.log("QRCodeServer - Invalid Producer Requesting QR Code, or Error with Request.");
         console.log(error);

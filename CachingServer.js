@@ -10,6 +10,7 @@ var bodyParser = require('body-parser');
 var nxtUrl = 'http://ec2-52-64-224-239.ap-southeast-2.compute.amazonaws.com:6876/nxt?';
 
 var QRCodeServerURL = 'http://ec2-54-153-202-123.ap-southeast-2.compute.amazonaws.com:3000/';
+var VerificationServerURL = 'http://ec2-54-153-202-123.ap-southeast-2.compute.amazonaws.com:3000/';
 
 var url = 'mongodb://localhost:27017';
 var db;
@@ -23,6 +24,11 @@ if (err)
 
 
  }
+
+ db.createCollection('hashInfo', function(error, otherThing) {
+   if (error) throw error;
+   console.log("CachingServer - Hash Info Collection Created!");
+ });
 
  db.createCollection('products', function(error, otherThing) {
    if (error) throw error;
@@ -62,31 +68,53 @@ function updateProducts() {
               //console.log(collectionName + ": " + JSON.stringify(value));
               var arr = value.attachment.message.split(" - ");
 
-              request.post({url:QRCodeServerURL + 'producerInfo', form: {producerAddr: arr[1]}},
-                function (error, response, body) {
-                  var jsonObj = JSON.parse(body);
-                  if (!error && response.statusCode == 200) {
-                    insert = {
-                      '_id': intCount,
-                      'action': arr[0],
-                      'actionAddress': value.senderRS,
-                      'timestamp': ((value.timestamp * 1000) + (1385294583 * 1000)),
-                      'nextProducer': arr[1],
-                      'producerName': jsonObj.name,
-                      'producerLocation': jsonObj.location
-                    }
-                    db.collection(collectionName, function(err, collection) {
-                      collection.deleteOne({_id: new ObjectId(intCount)});
-                    });
-                    intCount++;
-                    db.collection(collectionName).insert(insert, function(err, doc) {
-                    });
+              var txVerified = false;
 
-                  } else {
-                    console.log(error);
+              var collection = db.collection('hashInfo');
+              // Third item in array is the hash of the location information
+              collection.findOne({hash: arr[2]}, function(err, doc) {
+                request.post({url:VerificationServerURL + 'verifyLocation', form: {
+                      hash: arr[2],
+                      publicKey: value.senderRS,
+                      locationProof: doc.locationProof,
+                      timestamp: doc.timestamp
+                  }},
+                  function (error, response, body) {
+
+                    // NEED TO UPDATE IN HERE
+                    // Get proper info from body (response from th verifLocation)
+                    // Put this response into the 'insert' statement. 
+                    if(body != null) {
+                      request.post({url:QRCodeServerURL + 'producerInfo', form: {producerAddr: arr[1]}},
+                        function (error, response, body) {
+                          var jsonObj = JSON.parse(body);
+                          if (!error && response.statusCode == 200) {
+                            insert = {
+                              '_id': intCount,
+                              'action': arr[0],
+                              'actionAddress': value.senderRS,
+                              // To get the proper timestamp from the block, we need to add on the time from genesis block too
+                              'timestamp': ((value.timestamp * 1000) + (1385294583 * 1000)),
+                              'nextProducer': arr[1],
+                              'producerName': jsonObj.name,
+                              'producerLocation': jsonObj.location
+                            }
+                            db.collection(collectionName, function(err, collection) {
+                              collection.deleteOne({_id: new ObjectId(intCount)});
+                            });
+                            intCount++;
+                            db.collection(collectionName).insert(insert, function(err, doc) {
+                            });
+
+                          } else {
+                            console.log(error);
+                          }
+                        }
+                      );
+                    }
                   }
-                }
-              );
+                );
+              });
             });
           }
         }
@@ -96,11 +124,10 @@ function updateProducts() {
   });
 }
 
-//var minutes = 1, the_interval = minutes * 60 * 1000;
 setInterval(function() {
   console.log("CachingServer - Scheduled Update...");
   updateProducts();
-}, 10000);
+}, 20000);
 
 router.post('/cacheQR', function(req, res) {
   console.log('TIMESTAMP: ' + (new Date).getTime());
@@ -136,6 +163,24 @@ router.post('/cacheQR', function(req, res) {
   console.log('------');
 
   db.collection('PRODUCT - ' + qrAddress).insert(insert, function(err, doc) {
+    if (err) throw err;
+  });
+});
+
+router.post('/updateHashInfo', function(req, res) {
+  var fullHash = req.body.hash;
+  var RSAPublicKey = req.body.publicKey;
+  var locationProof = req.body.locationProof;
+  var timestamp = req.body.timestamp;
+
+  insert = {
+    'fullHash': fullHash,
+    'RSApublicKey': RSAPublicKey,
+    'locationProof': locationProof,
+    'timestamp': timestamp
+  }
+
+  db.collection('hashInfo').insert(insert, function(err, doc) {
     if (err) throw err;
   });
 });
