@@ -1,12 +1,10 @@
 var express = require('express');
 var app = express();
-//var cors = require('cors');
 var bodyParser = require('body-parser');
 var MongoClient = require('mongodb').MongoClient
 var request = require("request");
 var randomstring = require("randomstring");
 var qr = require('qr-image');
-//var mongoose = require('mongoose');
 
 // URL of MongoDB. Only change if MongoDB is in different location to server.
 var url = 'mongodb://localhost:27017';
@@ -86,7 +84,6 @@ MongoClient.connect(url, function (err, database) {
 });
 
 //Middleware
-//app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended:true}));
 
@@ -94,8 +91,8 @@ app.use(bodyParser.urlencoded({ extended:true}));
   API commands from additional .js files.
   Comment this out if running on individual servers.
 */
-//app.use(require('./CachingServer'));
-//app.use(require('./VerificationServer'));
+app.use(require('./CachingServer'));
+app.use(require('./VerificationServer'));
 
 /*
   Generates a random string to be used as new QR code's private key.
@@ -138,36 +135,8 @@ function validateQR(accAddr, pubKey, privKey, producerAddr) {
   );
 }
 
-// MOVE QR
-// DELETE THIS
-function sendToBlockchain(productAddr, prodDestination, producerPubKey, ivKey, productPubKey) {
-  console.log("ADVANCED SENDING");
-  request.post({url:nxtUrl, form: {requestType: 'sendMessage', secretPhrase: ivKey, recipient: productAddr, recipientPublicKey: productPubKey, message: 'MOVE - ' + prodDestination, deadline: '60', feeNQT: '0'}},
-    function (error, response, body) {
-      if (!error && response.statusCode == 200) {
-        console.log("Message sent successfully")
-        /*
-        insert = {
-          'action': 'SEND',
-          'sourceAddr': producerPubKey,
-          'destAddr': prodDestination
-        }
-        db.collection(productAddr).insert(insert, function(err, doc) {
-          if (err) throw err;
-        });
-        */
-        return true;
-      } else {
-        console.log("Error sending tx...");
-        console.log(error);
-        return false;
-      }
-    }
-  );
-}
-
 /*
-  Once QR code has been generated and validated, it is sent to the cache server.
+  Once QR code has been generated and validated, it is sent to the caching server.
 */
 function cacheQRInfo(accAddr, pubKey, privKey, producerAddr, producerPubKey, productName, productId, batchId) {
   console.log('QRCodeServer - Sending QR Code to Caching erver');
@@ -218,36 +187,8 @@ function verifyTimestamp(timestamp, producerAddress) {
   while(returnBoolean === "") {
     require('deasync').runLoopOnce();
   }
-
   return returnBoolean;
 }
-
-/*
-  Moves product.
-  DELETE THIS
-*/
-app.post('/moveqr', function (req, res) {
-  console.log('QRCodeServer - Product Being Moved');
-  var producerPubKey = req.body.pubKey;
-  var ivKey = req.body.privKey;
-  var productAddr = req.body.prodAddr;
-  var productPubKey = req.body.prodPubKey;
-  var prodDestination = req.body.destination;
-
-  request.post({url:cacheServerUrl + 'checkIfValid', form: {
-                accAddr: productAddr,
-                checkAddr: productChainAddress
-              }},
-    function (error, response, body) {
-      if(body == "true") {
-        sendToBlockchain(productAddr, prodDestination, producerPubKey, ivKey, productPubKey)
-        console.log("QRCodeServer - Product Moved Successfully");
-        res.send("QR code moved successfully.");
-      } else {
-        console.log("QRCodeServer - Product Not Valid");
-      }
-    });
-});
 
 /*
   Handles the Producer requests for new QR Codes.
@@ -262,6 +203,7 @@ app.post('/getqr', function (req, res) {
   var productName = req.body.productName;
   var productId = req.body.productID;
   var batchId = req.body.batchID;
+  console.log("PRODUCER ADDRESS: " + producerAddr);
 
   /*
     Included in the getqr request from a producer is encrypted data and a nonce.
@@ -287,6 +229,12 @@ app.post('/getqr', function (req, res) {
               }},
     function (error, response, body) {
       var bodyJSON = JSON.parse(body);
+
+      /*
+        Checks to see if the hash in the message equals the hash of the data sent
+        in the message. If so, then checks to see if the encrypted timestamp has
+        been previously requested by this producer. Not it hasn't, then it is a valid request.
+      */
       if (!error && bodyJSON.decryptedMessage == timestamp) {
         if(verifyTimestamp(timestamp, producerAddr)) {
             console.log("QRCodeServer - Valid QR Code Request")
@@ -335,14 +283,12 @@ app.post('/producerInfo', function(req, res) {
   });
 });
 
-
 /*
 Remove all Collections from MongoDB.
 Comment out this when not required. Only use for administrative purpose (start with fresh Mongodb)
 */
 
-/*
 app.get('/removeAll', (req, res) => {
+  console.log("QRCodeServer - Dropping Tables");
   db.dropDatabase();
 })
-*/
