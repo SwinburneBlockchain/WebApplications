@@ -65,12 +65,12 @@ if (err)
  });
 
   // Comment this out if not running on separate servers
-  /*
+
   var port = process.env.PORT || 3000;
     app.listen(port, function () {
       console.log('CachingServer - Listening on port 3000...')
     });
-    */
+
 });
 
 /*
@@ -262,7 +262,7 @@ app.post('/cacheQR', function(req, res) {
   When product has been moved, the hash, public key, location proof, and timestamp
   are stored in 'hashInfo' Collection.
 */
-router.post('/updateHashInfo', function(req, res) {
+app.post('/updateHashInfo', function(req, res) {
   console.log("CachingServer - Product Location Data Updated by Producer")
   var fullHash = req.body.hash;
   var RSAPublicKey = req.body.publicKey;
@@ -287,7 +287,7 @@ router.post('/updateHashInfo', function(req, res) {
   Checks if a product has been validated.
   Takes in a product address, and the address which made the validation.
 */
-router.post('/checkIfValid', function(req, res) {
+app.post('/checkIfValid', function(req, res) {
   console.log("CachingServer - Checking if Product has been Validated");
   var productAddr = req.body.accAddr;
   var checkAddr = req.body.checkAddr;
@@ -309,7 +309,7 @@ router.post('/checkIfValid', function(req, res) {
   Returns all info related to a particular product ID
   Used by the consumer application.
 */
-router.get('/productInfo/:accAddr', function(req, res) {
+app.get('/productInfo/:accAddr', function(req, res) {
   console.log("CachingServer - Cosumer Requesting Info");
   var productAddr = req.params.accAddr;
   db.collection('PRODUCT - ' + productAddr).find({}).toArray(function(err, result) {
