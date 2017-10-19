@@ -1,3 +1,9 @@
+/*
+  Swinburne Capstone Project - ICT90004
+  Aidan Beale & John Humphrys
+  https://github.com/SwinburneBlockchain
+*/
+
 var express = require('express');
 var app = express();
 var MongoClient = require('mongodb').MongoClient
@@ -52,12 +58,12 @@ MongoClient.connect(url, function (err, database) {
    });
  });
 
-/*
+// Comment this out if not running on separate servers
  var port = process.env.PORT || 3000;
    app.listen(port, function () {
      console.log('VerificationServer - Listening on port 3000...')
    });
-*/
+
 });
 
 // Middleware
@@ -68,7 +74,7 @@ app.use(bodyParser.urlencoded({ extended:true}));
   Verifies that the location proof associated with a MOVE action is valid.
   Takes in generated hash, the RSA public key, the 'location proof' (signature)
 */
-router.post('/verifyLocation', function(req, res) {
+app.post('/verifyLocation', function(req, res) {
     var fullHash = req.body.hash;
     var publicKey = req.body.publicKey;
     var locationProof = req.body.locationProof;
@@ -87,8 +93,7 @@ router.post('/verifyLocation', function(req, res) {
           var key = new NodeRSA();
           key.importKey(publicKey);
 
-          var validResult = key.verify("VALID_LOCATION", locationProof, "utf8", "hex");
-
+          var validResult = key.verify(timestamp, locationProof, "utf8", "hex");
           if(validResult) {
             res.send(validResult + " | " + doc.location);
           } else {

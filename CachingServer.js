@@ -1,3 +1,9 @@
+/*
+  Swinburne Capstone Project - ICT90004
+  Aidan Beale & John Humphrys
+  https://github.com/SwinburneBlockchain
+*/
+
 var express = require('express');
 var app = express();
 var MongoClient = require('mongodb').MongoClient
@@ -18,6 +24,12 @@ var nxtUrl = 'http://ec2-52-64-224-239.ap-southeast-2.compute.amazonaws.com:6876
 */
 var QRCodeServerURL = 'http://ec2-54-153-202-123.ap-southeast-2.compute.amazonaws.com:3000/';
 var VerificationServerURL = 'http://ec2-54-153-202-123.ap-southeast-2.compute.amazonaws.com:3000/';
+
+/*
+  Nxt address of the ProductChain server. Used to validate new QR codes
+  Change if necessary
+*/
+var productChainAddress = "NXT-HP3G-T95S-6W2D-AEPHE";
 
 /*
   Default URL of MongoDB.
@@ -53,18 +65,11 @@ if (err)
  });
 
   // Comment this out if not running on separate servers
-  /*
   var port = process.env.PORT || 3000;
     app.listen(port, function () {
       console.log('CachingServer - Listening on port 3000...')
     });
-  */
 });
-
-/*
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended:true}));
-*/
 
 /*
   Loops through all cached products to find information from Blockchain.
@@ -92,80 +97,109 @@ function updateProducts() {
         function callback(error, response, body) {
           if (!error && response.statusCode == 200) {
             var intCount = 1;
+            var nextProducer;
 
-            body.transactions.forEach(function(value) {
+            /*
+              Goes through list of transactions to a product.
+            */
+            body.transactions.reverse().forEach(function(value) {
               var arr = value.attachment.message.split(" - ");
-              var txVerified = false;
+              //var txVerified = false;
 
+              /*
+                Checks to see if the transaction is a VALIDATE message from the ProductChain
+                server. If it is, then it caches the transaction.
+              */
               if(arr[0] == "VALIDATE") {
-                request.post({url:QRCodeServerURL + 'producerInfo', form: {producerAddr: arr[1]}},
-                function (error, response, body) {
-                  var jsonObj = JSON.parse(body);
-                  if (!error && response.statusCode == 200) {
-                    insert = {
-                      '_id': intCount,
-                      'action': arr[0],
-                      'actionAddress': value.senderRS,
-                      'timestamp': ((value.timestamp * 1000) + (1385294583 * 1000)),
-                      'nextProducer': arr[1],
-                      'producerName': jsonObj.name,
-                      'producerLocation': jsonObj.location
-                    }
-                    db.collection(collectionName, function(err, collection) {
-                      collection.deleteOne({_id: new ObjectId(intCount)});
-                    });
-                    intCount++;
-                    db.collection(collectionName).insert(insert, function(err, doc) {
-                      //if (err) throw err;
-                    });
+                if(value.senderRS == productChainAddress) {
+                  nextProducer = arr[1];
+                  console.log("CachingServer - senderRS = productChainAddress");
 
-                  } else {
-                    console.log(error);
-                  }
-                }
-              );
-              } else {
-                var collection = db.collection('hashInfo');
-                // Third item in array (arr[2]) is the hash of the location information
-                collection.findOne({fullHash: arr[2]}, function(err, doc) {
-                  request.post({url:VerificationServerURL + 'verifyLocation', form: {
-                        hash: arr[2],
-                        publicKey: doc.RSApublicKey,
-                        locationProof: doc.locationProof,
-                        timestamp: doc.timestamp
-                    }},
-                    function (error, response, body) {
-                      if(body != null) {
-                        request.post({url:QRCodeServerURL + 'producerInfo', form: {producerAddr: arr[1]}},
-                          function (error, response, body) {
-                            var jsonObj = JSON.parse(body);
-                            if (!error && response.statusCode == 200) {
-                              insert = {
-                                '_id': intCount,
-                                'action': arr[0],
-                                'actionAddress': value.senderRS,
-                                // To get the proper timestamp from the block, we need to add on the time from genesis block too
-                                'timestamp': ((value.timestamp * 1000) + (1385294583 * 1000)),
-                                'nextProducer': arr[1],
-                                'producerName': jsonObj.name,
-                                'producerLocation': jsonObj.location
-                              }
-                              db.collection(collectionName, function(err, collection) {
-                                collection.deleteOne({_id: new ObjectId(intCount)});
-                              });
-                              intCount++;
-                              db.collection(collectionName).insert(insert, function(err, doc) {
-                              });
-
-                            } else {
-                              console.log(error);
-                            }
-                          }
-                        );
+                  /*
+                    POST to QRCodeServer to retrieve information related to Producer
+                  */
+                  request.post({url:QRCodeServerURL + 'producerInfo', form: {producerAddr: arr[1]}},
+                  function (error, response, body) {
+                    var jsonObj = JSON.parse(body);
+                    if (!error && response.statusCode == 200) {
+                      insert = {
+                        '_id': intCount,
+                        'action': arr[0],
+                        'actionAddress': value.senderRS,
+                        'timestamp': ((value.timestamp * 1000) + (1385294583 * 1000)),
+                        'nextProducer': arr[1],
+                        'producerName': jsonObj.name,
+                        'producerLocation': jsonObj.location
                       }
+                      db.collection(collectionName, function(err, collection) {
+                        collection.deleteOne({_id: new ObjectId(intCount)});
+                      });
+                      intCount++;
+                      db.collection(collectionName).insert(insert, function(err, doc) {
+                      });
+
+                    } else {
+                      console.log(error);
                     }
-                  );
-                });
+                  });
+                } else {
+                  console.log("CachingServer - Invalid VALIDATE Transaction to Product");
+                }
+              } else if(arr[0] == "MOVE") {
+                if(value.senderRS == nextProducer) {
+                  nextProducer = arr[1];
+                  /*
+                    If the transaction is not a VALIDATE action, then it checks to ensure the
+                    hash in the message is correct (sha-256 hash of RSA public key, the location proof, timestamp)
+                  */
+                  var collection = db.collection('hashInfo');
+                  // Third item in array (arr[2]) is the hash of the location information
+                  collection.findOne({fullHash: arr[2]}, function(err, doc) {
+                    request.post({url:VerificationServerURL + 'verifyLocation', form: {
+                          hash: arr[2],
+                          publicKey: doc.RSApublicKey,
+                          locationProof: doc.locationProof,
+                          timestamp: doc.timestamp
+                      }},
+                      function (error, response, body) {
+                        var arrResponse = body.split(" | ");
+
+                        if(body != null) {
+                          request.post({url:QRCodeServerURL + 'producerInfo', form: {producerAddr: arr[1]}},
+                            function (error, response, body) {
+                              var jsonObj = JSON.parse(body);
+                              if (!error && response.statusCode == 200) {
+                                insert = {
+                                  '_id': intCount,
+                                  'action': arr[0],
+                                  'actionAddress': value.senderRS,
+                                  // To get the proper timestamp from the block, we need to add on the time from genesis block too
+                                  'timestamp': ((value.timestamp * 1000) + (1385294583 * 1000)),
+                                  'nextProducer': arr[1],
+                                  'producerName': jsonObj.name,
+                                  'producerLocation': jsonObj.location
+                                }
+                                db.collection(collectionName, function(err, collection) {
+                                  collection.deleteOne({_id: new ObjectId(intCount)});
+                                });
+                                intCount++;
+                                db.collection(collectionName).insert(insert, function(err, doc) {
+                                });
+
+                              } else {
+                                console.log(error);
+                              }
+                            }
+                          );
+                        }
+                      }
+                    );
+                  });
+                } else {
+                  console.log("CachingServer - Invalid MOVE Transaction to Product");
+                }
+            } else {
+              console.log("CachingServer - Invalid Transaction to Product");
             }
             });
           }
@@ -183,14 +217,14 @@ function updateProducts() {
 setInterval(function() {
   console.log("CachingServer - Scheduled Update...");
   updateProducts();
-}, 30000);
+}, 20000);
 
 /*
   API request to cache a newly generated QR code
   Called from the QRCodeServer when a new QR code is generated.
   CachingServer makes a new Collection for the QR code, and updates info.
 */
-router.post('/cacheQR', function(req, res) {
+app.post('/cacheQR', function(req, res) {
   console.log("CachingServer - CACHING QR CODE");
   var qrAddress = req.body.qrAddress;
   var qrPubKey = req.body.qrPubKey;
@@ -216,23 +250,24 @@ router.post('/cacheQR', function(req, res) {
     'producerLocation': producerLocation,
     'timestamp': timestamp,
   }
-  console.log('------');
+  console.log('CachingServer --------');
   console.log(qrAddress);
   console.log(producerName);
   console.log(producerLocation);
-  console.log('------');
+  console.log('CachingServer --------');
 
   db.collection('PRODUCT - ' + qrAddress).insert(insert, function(err, doc) {
     if (err) throw err;
   });
+  res.send("cached");
 });
 
 /*
-  When product has been moved, hash, public key, location proof, and timestamp
+  When product has been moved, the hash, public key, location proof, and timestamp
   are stored in 'hashInfo' Collection.
 */
-router.post('/updateHashInfo', function(req, res) {
-  console.log("CachingServer - Hash Info Updated")
+app.post('/updateHashInfo', function(req, res) {
+  console.log("CachingServer - Product Updated")
   var fullHash = req.body.hash;
   var RSAPublicKey = req.body.publicKey;
   var locationProof = req.body.locationProof;
@@ -250,13 +285,14 @@ router.post('/updateHashInfo', function(req, res) {
   });
 
   res.send("true");
+  console.log("CachingServer - Product Hash Info Updated")
 });
 
 /*
   Checks if a product has been validated.
   Takes in a product address, and the address which made the validation.
 */
-router.post('/checkIfValid', function(req, res) {
+app.post('/checkIfValid', function(req, res) {
   console.log("CachingServer - Checking if Product is Valid");
   var productAddr = req.body.accAddr;
   var checkAddr = req.body.checkAddr;
@@ -278,16 +314,13 @@ router.post('/checkIfValid', function(req, res) {
   Returns all info related to a particular product ID
   Used by the consumer application.
 */
-router.post('/productInfo', function(req, res) {
+app.get('/productInfo/:accAddr', function(req, res) {
   console.log("CachingServer - Cosumer Requesting Info");
-  var productAddr = req.body.accAddr;
-
+  var productAddr = req.params.accAddr;
   db.collection('PRODUCT - ' + productAddr).find({}).toArray(function(err, result) {
-    console.log("GOT TO HERE");
-    console.log("RESULT: " + result);
+    //pipe items
     var completeString = "";
     result.forEach(function(value) {
-      console.log(value);
       completeString += JSON.stringify(value);
       completeString += "|";
     });

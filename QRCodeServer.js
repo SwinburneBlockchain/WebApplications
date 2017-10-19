@@ -1,3 +1,9 @@
+/*
+  Swinburne Capstone Project - ICT90004
+  Aidan Beale & John Humphrys
+  https://github.com/SwinburneBlockchain
+*/
+
 var express = require('express');
 var app = express();
 var bodyParser = require('body-parser');
@@ -35,7 +41,8 @@ var productChainAddress = "NXT-HP3G-T95S-6W2D-AEPHE";
 var validProducers = [
   ['NXT-HP3G-T95S-6W2D-AEPHE', 'ProductChain Server', 'Swinburne Hawthorn, Victoria'],
   ['NXT-QBU9-KSX6-6TH4-H47LR', 'John Egg Farm',       'Croydon Hills, Victoria'],
-  ['NXT-MNDK-R2CB-TX4W-AKH4U', 'Aidan Grocery Store', 'Gold Coast Shops, Queensland']
+  ['NXT-MNDK-R2CB-TX4W-AKH4U', 'Aidan Grocery Store', 'Gold Coast Shops, Queensland'],
+  ['NXT-6UBL-T6JL-J35C-2ZV43', 'Freds Sorting Facility', 'Pacific Hwy, Sydney']
 ];
 
 /*
@@ -91,9 +98,10 @@ app.use(bodyParser.urlencoded({ extended:true}));
   API commands from additional .js files.
   Comment this out if running on individual servers.
 */
+/*
 app.use(require('./CachingServer'));
 app.use(require('./VerificationServer'));
-
+*/
 /*
   Generates a random string to be used as new QR code's private key.
   Contacts Nxt blockchain and retrieves public key and address associated with private key.
@@ -162,6 +170,7 @@ function cacheQRInfo(accAddr, pubKey, privKey, producerAddr, producerPubKey, pro
 
 /*
   Check to see if a timestamp has been linked to a Producer previously.
+  Takes in a timestamp and a producer address (Nxt address)
 */
 function verifyTimestamp(timestamp, producerAddress) {
   console.log("QRCodeServer - VERIFYING TIMESTAMP");
@@ -169,6 +178,10 @@ function verifyTimestamp(timestamp, producerAddress) {
 
   var returnBoolean = "";
 
+  /*
+    If it cannot find a timestamp that has been used previously by the given producer, then
+    this is a new
+  */
   collection.findOne({producerAddress: producerAddress, timestamp: timestamp}, function(err, doc) {
     if(!doc) {
       insert = {
@@ -233,7 +246,7 @@ app.post('/getqr', function (req, res) {
       /*
         Checks to see if the hash in the message equals the hash of the data sent
         in the message. If so, then checks to see if the encrypted timestamp has
-        been previously requested by this producer. Not it hasn't, then it is a valid request.
+        been previously requested by this producer. If not, then it is a valid request.
       */
       if (!error && bodyJSON.decryptedMessage == timestamp) {
         if(verifyTimestamp(timestamp, producerAddr)) {
@@ -287,8 +300,9 @@ app.post('/producerInfo', function(req, res) {
 Remove all Collections from MongoDB.
 Comment out this when not required. Only use for administrative purpose (start with fresh Mongodb)
 */
-
+/*
 app.get('/removeAll', (req, res) => {
   console.log("QRCodeServer - Dropping Tables");
   db.dropDatabase();
 })
+*/
