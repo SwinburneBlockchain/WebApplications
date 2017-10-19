@@ -79,7 +79,6 @@ MongoClient.connect(url, function (err, database) {
 
     db.createCollection('QRCodeRequestTimestamps', function(error, otherThing) {
       if (error) throw error;
-      console.log("VerificationServer - Location Servers Collection Created!");
     });
 
     //Creates port and server starts listening for requests.
@@ -98,10 +97,10 @@ app.use(bodyParser.urlencoded({ extended:true}));
   API commands from additional .js files.
   Comment this out if running on individual servers.
 */
-/*
+
 app.use(require('./CachingServer'));
 app.use(require('./VerificationServer'));
-*/
+
 /*
   Generates a random string to be used as new QR code's private key.
   Contacts Nxt blockchain and retrieves public key and address associated with private key.
@@ -109,7 +108,6 @@ app.use(require('./VerificationServer'));
 function getQRDetailsFromNxt(cb) {
   var randSecretKey = randomstring.generate(16);
 
-  console.log("Received QR Code request");
   const options = {
     method: 'GET',
     uri: nxtUrl,
@@ -136,7 +134,7 @@ function validateQR(accAddr, pubKey, privKey, producerAddr) {
     function (error, response, body) {
       if (!error && response.statusCode == 200) {
       } else {
-        console.log("Error sending tx...");
+        console.log("QRCodeServer - Error sending tx...");
         console.log(error);
       }
     }
@@ -209,14 +207,13 @@ function verifyTimestamp(timestamp, producerAddress) {
   sent by the producer.
 */
 app.post('/getqr', function (req, res) {
-  console.log("Requesting QR Code...");
+  console.log("QRCodeServer - Producer Requesting QR Code...");
 
   var producerAddr = req.body.accAddr;
   var producerPubKey = req.body.pubKey;
   var productName = req.body.productName;
   var productId = req.body.productID;
   var batchId = req.body.batchID;
-  console.log("PRODUCER ADDRESS: " + producerAddr);
 
   /*
     Included in the getqr request from a producer is encrypted data and a nonce.

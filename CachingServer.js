@@ -65,10 +65,12 @@ if (err)
  });
 
   // Comment this out if not running on separate servers
+  /*
   var port = process.env.PORT || 3000;
     app.listen(port, function () {
       console.log('CachingServer - Listening on port 3000...')
     });
+    */
 });
 
 /*
@@ -113,7 +115,6 @@ function updateProducts() {
               if(arr[0] == "VALIDATE") {
                 if(value.senderRS == productChainAddress) {
                   nextProducer = arr[1];
-                  console.log("CachingServer - senderRS = productChainAddress");
 
                   /*
                     POST to QRCodeServer to retrieve information related to Producer
@@ -143,7 +144,7 @@ function updateProducts() {
                     }
                   });
                 } else {
-                  console.log("CachingServer - Invalid VALIDATE Transaction to Product");
+                  // Invalid VALIDATE Transaction to Product
                 }
               } else if(arr[0] == "MOVE") {
                 if(value.senderRS == nextProducer) {
@@ -196,10 +197,10 @@ function updateProducts() {
                     );
                   });
                 } else {
-                  console.log("CachingServer - Invalid MOVE Transaction to Product");
+                  // Invalid MOVE Transaction to Product
                 }
             } else {
-              console.log("CachingServer - Invalid Transaction to Product");
+              // Invalid Transaction to Product
             }
             });
           }
@@ -215,9 +216,9 @@ function updateProducts() {
   Nxt blocks are mined roughly every minute, so needs to continuously update.
 */
 setInterval(function() {
-  console.log("CachingServer - Scheduled Update...");
+  console.log("CachingServer - Scheduled Update");
   updateProducts();
-}, 20000);
+}, 30000);
 
 /*
   API request to cache a newly generated QR code
@@ -225,7 +226,7 @@ setInterval(function() {
   CachingServer makes a new Collection for the QR code, and updates info.
 */
 app.post('/cacheQR', function(req, res) {
-  console.log("CachingServer - CACHING QR CODE");
+  console.log("CachingServer - Caching new QR Code");
   var qrAddress = req.body.qrAddress;
   var qrPubKey = req.body.qrPubKey;
   var qrPrivKey = req.body.qrPrivKey;
@@ -250,11 +251,6 @@ app.post('/cacheQR', function(req, res) {
     'producerLocation': producerLocation,
     'timestamp': timestamp,
   }
-  console.log('CachingServer --------');
-  console.log(qrAddress);
-  console.log(producerName);
-  console.log(producerLocation);
-  console.log('CachingServer --------');
 
   db.collection('PRODUCT - ' + qrAddress).insert(insert, function(err, doc) {
     if (err) throw err;
@@ -266,8 +262,8 @@ app.post('/cacheQR', function(req, res) {
   When product has been moved, the hash, public key, location proof, and timestamp
   are stored in 'hashInfo' Collection.
 */
-app.post('/updateHashInfo', function(req, res) {
-  console.log("CachingServer - Product Updated")
+router.post('/updateHashInfo', function(req, res) {
+  console.log("CachingServer - Product Location Data Updated by Producer")
   var fullHash = req.body.hash;
   var RSAPublicKey = req.body.publicKey;
   var locationProof = req.body.locationProof;
@@ -285,15 +281,14 @@ app.post('/updateHashInfo', function(req, res) {
   });
 
   res.send("true");
-  console.log("CachingServer - Product Hash Info Updated")
 });
 
 /*
   Checks if a product has been validated.
   Takes in a product address, and the address which made the validation.
 */
-app.post('/checkIfValid', function(req, res) {
-  console.log("CachingServer - Checking if Product is Valid");
+router.post('/checkIfValid', function(req, res) {
+  console.log("CachingServer - Checking if Product has been Validated");
   var productAddr = req.body.accAddr;
   var checkAddr = req.body.checkAddr;
   db.collection('PRODUCT - ' + productAddr).find({}).toArray(function(err, result) {
@@ -314,7 +309,7 @@ app.post('/checkIfValid', function(req, res) {
   Returns all info related to a particular product ID
   Used by the consumer application.
 */
-app.get('/productInfo/:accAddr', function(req, res) {
+router.get('/productInfo/:accAddr', function(req, res) {
   console.log("CachingServer - Cosumer Requesting Info");
   var productAddr = req.params.accAddr;
   db.collection('PRODUCT - ' + productAddr).find({}).toArray(function(err, result) {
@@ -324,8 +319,6 @@ app.get('/productInfo/:accAddr', function(req, res) {
       completeString += JSON.stringify(value);
       completeString += "|";
     });
-
-    console.log(completeString);
     res.send(completeString);
   });
 });

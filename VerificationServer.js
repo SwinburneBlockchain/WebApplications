@@ -59,11 +59,12 @@ MongoClient.connect(url, function (err, database) {
  });
 
 // Comment this out if not running on separate servers
+/*
  var port = process.env.PORT || 3000;
    app.listen(port, function () {
      console.log('VerificationServer - Listening on port 3000...')
    });
-
+*/
 });
 
 // Middleware
@@ -74,7 +75,7 @@ app.use(bodyParser.urlencoded({ extended:true}));
   Verifies that the location proof associated with a MOVE action is valid.
   Takes in generated hash, the RSA public key, the 'location proof' (signature)
 */
-app.post('/verifyLocation', function(req, res) {
+router.post('/verifyLocation', function(req, res) {
     var fullHash = req.body.hash;
     var publicKey = req.body.publicKey;
     var locationProof = req.body.locationProof;
@@ -84,7 +85,6 @@ app.post('/verifyLocation', function(req, res) {
     collection.findOne({publicKey: publicKey}, function(err, doc) {
       if(doc == null) {
         res.send("Public key not found in database");
-        console.log("VerificationServer - Public Key not found");
       } else {
         var calculatedHash = hash.sha256().update(locationProof + ',' + publicKey + ',' + timestamp).digest('hex');
 
@@ -98,13 +98,10 @@ app.post('/verifyLocation', function(req, res) {
             res.send(validResult + " | " + doc.location);
           } else {
             res.send(validResult);
-            console.log("VerificationServer - Location not verified");
           }
         } else {
           res.send("Invalid Hash");
-          console.log("VerificationServer - Invalid Hash");
         }
-
       }
     });
 });
