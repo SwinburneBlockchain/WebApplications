@@ -35,7 +35,7 @@ var productChainSecretPhrase = "curve excuse kid content gun horse leap poison g
 var productChainAddress = "NXT-HP3G-T95S-6W2D-AEPHE";
 
 /*
-  List of valid producers. Inludes Nxt address, name of Producer, and Producer's location(?)
+  List of valid producers. Inludes Nxt address, name of Producer, and Producer's location
   Change these if required.
 */
 var validProducers = [
@@ -98,8 +98,8 @@ app.use(bodyParser.urlencoded({ extended:true}));
   Comment this out if running on individual servers.
 */
 
-app.use(require('./CachingServer'));
-app.use(require('./VerificationServer'));
+//app.use(require('./CachingServer'));
+//app.use(require('./VerificationServer'));
 
 /*
   Generates a random string to be used as new QR code's private key.
